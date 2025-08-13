@@ -161,17 +161,15 @@ export async function createDefaultAdmin() {
   })
 
   try {
-    // Try to check if staff_profiles table exists by attempting a simple query
     const { error: tableCheckError } = await supabase.from("staff_profiles").select("id").limit(1)
 
     if (tableCheckError && tableCheckError.code === "42P01") {
       return {
         error:
-          "❌ Database tables not set up! Please run these scripts first:\n\n1. scripts/01-create-tables.sql\n2. scripts/02-enable-rls.sql\n3. scripts/03-seed-data.sql\n4. scripts/04-create-functions.sql\n\nThen try creating the admin user again.",
+          "❌ Database tables not set up!\n\nPlease run these scripts first:\n1. scripts/01-create-tables.sql\n2. scripts/02-enable-rls.sql\n3. scripts/03-seed-data.sql\n4. scripts/04-create-functions.sql\n\nThen try creating the admin user again.",
       }
     }
 
-    // Check if admin already exists in staff_profiles
     const { data: existingProfile } = await supabase
       .from("staff_profiles")
       .select("id")
@@ -180,48 +178,59 @@ export async function createDefaultAdmin() {
 
     if (existingProfile) {
       return {
-        success: "✅ Admin user already exists! You can login with:\n📧 Email: admin@company.com\n🔑 Password: admin",
+        success: "✅ Admin user already exists! You can login with:\nEmail: admin@company.com\nPassword: admin",
       }
     }
 
-    // Create admin user using Supabase Admin API
-    const { data, error } = await supabase.auth.admin.createUser({
-      email: "admin@company.com",
-      password: "admin",
-      email_confirm: true,
-      user_metadata: {
-        full_name: "System Administrator",
-      },
-    })
+    const { data: existingUsers } = await supabase.auth.admin.listUsers()
+    const existingAuthUser = existingUsers.users?.find((user) => user.email === "admin@company.com")
 
-    if (error) {
-      console.error("Admin creation error:", error)
-      return { error: `Failed to create admin user: ${error.message}` }
-    }
+    let adminUserId: string
 
-    if (data.user) {
-      // Create staff profile for admin
-      const { error: profileError } = await supabase.from("staff_profiles").insert({
-        id: data.user.id,
-        employee_id: "ADMIN001",
-        first_name: "System",
-        last_name: "Administrator",
+    if (existingAuthUser) {
+      adminUserId = existingAuthUser.id
+      console.log("Found existing auth user, creating profile only")
+    } else {
+      const { data, error } = await supabase.auth.admin.createUser({
         email: "admin@company.com",
-        department: "Management",
-        position: "Administrator",
-        role: "admin",
-        hire_date: new Date().toISOString().split("T")[0],
+        password: "admin",
+        email_confirm: true,
+        user_metadata: {
+          full_name: "System Administrator",
+        },
       })
 
-      if (profileError) {
-        console.error("Admin profile creation error:", profileError)
-        return { error: `Admin user created but profile setup failed: ${profileError.message}` }
+      if (error) {
+        console.error("Admin creation error:", error)
+        return { error: `Failed to create admin user: ${error.message}` }
       }
+
+      if (!data.user) {
+        return { error: "Failed to create admin user - no user data returned" }
+      }
+
+      adminUserId = data.user.id
+    }
+
+    const { error: profileError } = await supabase.from("staff_profiles").insert({
+      id: adminUserId,
+      employee_id: "ADMIN001",
+      first_name: "System",
+      last_name: "Administrator",
+      email: "admin@company.com",
+      department: "Management",
+      position: "Administrator",
+      role: "admin",
+      hire_date: new Date().toISOString().split("T")[0],
+    })
+
+    if (profileError) {
+      console.error("Admin profile creation error:", profileError)
+      return { error: `Profile setup failed: ${profileError.message}` }
     }
 
     return {
-      success:
-        "✅ Default admin user created successfully!\n\n📧 Email: admin@company.com\n🔑 Password: admin\n\nYou can now login!",
+      success: "✅ Default admin user ready!\n\nEmail: admin@company.com\nPassword: admin\n\nYou can now login!",
     }
   } catch (error) {
     console.error("Admin creation error:", error)
