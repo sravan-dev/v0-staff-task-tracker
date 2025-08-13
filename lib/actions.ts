@@ -161,15 +161,28 @@ export async function createDefaultAdmin() {
   })
 
   try {
-    const { error: tableCheckError } = await supabase.from("staff_profiles").select("id").limit(1)
+    const { data: tables, error: schemaError } = await supabase
+      .from("information_schema.tables")
+      .select("table_name")
+      .eq("table_schema", "public")
+      .eq("table_name", "staff_profiles")
 
-    if (tableCheckError && tableCheckError.code === "42P01") {
+    if (schemaError || !tables || tables.length === 0) {
       return {
-        error:
-          "❌ Database tables not set up!\n\nPlease run these scripts first:\n1. scripts/01-create-tables.sql\n2. scripts/02-enable-rls.sql\n3. scripts/03-seed-data.sql\n4. scripts/04-create-functions.sql\n\nThen try creating the admin user again.",
+        error: `DATABASE SETUP REQUIRED
+
+The database tables haven't been created yet. Please run these scripts in order:
+
+1. scripts/01-create-tables.sql
+2. scripts/02-enable-rls.sql  
+3. scripts/03-seed-data.sql
+4. scripts/04-create-functions.sql
+
+After running all scripts, try creating the admin user again.`,
       }
     }
 
+    // Check if admin profile already exists
     const { data: existingProfile } = await supabase
       .from("staff_profiles")
       .select("id")
@@ -178,10 +191,16 @@ export async function createDefaultAdmin() {
 
     if (existingProfile) {
       return {
-        success: "✅ Admin user already exists! You can login with:\nEmail: admin@company.com\nPassword: admin",
+        success: `ADMIN USER READY!
+
+Email: admin@company.com
+Password: admin
+
+You can now login with these credentials!`,
       }
     }
 
+    // Check for existing auth user
     const { data: existingUsers } = await supabase.auth.admin.listUsers()
     const existingAuthUser = existingUsers.users?.find((user) => user.email === "admin@company.com")
 
@@ -191,6 +210,7 @@ export async function createDefaultAdmin() {
       adminUserId = existingAuthUser.id
       console.log("Found existing auth user, creating profile only")
     } else {
+      // Create new auth user
       const { data, error } = await supabase.auth.admin.createUser({
         email: "admin@company.com",
         password: "admin",
@@ -212,6 +232,7 @@ export async function createDefaultAdmin() {
       adminUserId = data.user.id
     }
 
+    // Create staff profile
     const { error: profileError } = await supabase.from("staff_profiles").insert({
       id: adminUserId,
       employee_id: "ADMIN001",
@@ -230,10 +251,19 @@ export async function createDefaultAdmin() {
     }
 
     return {
-      success: "✅ Default admin user ready!\n\nEmail: admin@company.com\nPassword: admin\n\nYou can now login!",
+      success: `ADMIN USER CREATED SUCCESSFULLY!
+
+Email: admin@company.com
+Password: admin
+Role: Administrator
+
+You can now login with these credentials!`,
     }
   } catch (error) {
     console.error("Admin creation error:", error)
-    return { error: "❌ Failed to create default admin user. Please ensure database tables are set up first." }
+    return {
+      error:
+        "Failed to create default admin user. Please ensure database tables are set up first by running the setup scripts.",
+    }
   }
 }

@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, LogIn, Info, UserPlus } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useState, startTransition } from "react"
 import { signIn, createDefaultAdmin } from "@/lib/actions"
 import { useSearchParams } from "next/navigation"
 
@@ -50,12 +50,18 @@ export default function LoginForm() {
     }
   }, [state, router])
 
-  // Handle admin creation
-  const handleCreateAdmin = async () => {
+  const handleCreateAdmin = () => {
     setIsCreatingAdmin(true)
-    await adminAction()
-    setIsCreatingAdmin(false)
+    startTransition(() => {
+      adminAction()
+    })
   }
+
+  useEffect(() => {
+    if (adminState) {
+      setIsCreatingAdmin(false)
+    }
+  }, [adminState])
 
   return (
     <Card className="w-full max-w-md">
