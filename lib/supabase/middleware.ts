@@ -28,7 +28,20 @@ export async function updateSession(request: NextRequest) {
   if (code) {
     // Exchange the code for a session
     await supabase.auth.exchangeCodeForSession(code)
-    // Redirect to dashboard after successful auth
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (session?.user) {
+      // Get user's staff profile to check role
+      const { data: profile } = await supabase.from("staff_profiles").select("role").eq("id", session.user.id).single()
+
+      // Redirect admin users to admin dashboard, others to regular dashboard
+      const redirectPath = profile?.role === "admin" ? "/admin" : "/dashboard"
+      return NextResponse.redirect(new URL(redirectPath, request.url))
+    }
+
+    // Fallback to dashboard if no profile found
     return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
