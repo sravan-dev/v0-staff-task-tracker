@@ -161,26 +161,27 @@ export async function createDefaultAdmin() {
   })
 
   try {
-    // Check if staff_profiles table exists
-    const { data: tables, error: tableError } = await supabase
-      .from("information_schema.tables")
-      .select("table_name")
-      .eq("table_schema", "public")
-      .eq("table_name", "staff_profiles")
+    // Try to check if staff_profiles table exists by attempting a simple query
+    const { error: tableCheckError } = await supabase.from("staff_profiles").select("id").limit(1)
 
-    if (tableError || !tables || tables.length === 0) {
+    if (tableCheckError && tableCheckError.code === "42P01") {
       return {
         error:
-          "Database tables not found. Please run the database setup scripts first: 01-create-tables.sql, 02-enable-rls.sql, 03-seed-data.sql, and 04-create-functions.sql",
+          "❌ Database tables not set up! Please run these scripts first:\n\n1. scripts/01-create-tables.sql\n2. scripts/02-enable-rls.sql\n3. scripts/03-seed-data.sql\n4. scripts/04-create-functions.sql\n\nThen try creating the admin user again.",
       }
     }
 
-    // First check if admin already exists
-    const { data: existingUser } = await supabase.auth.admin.listUsers()
-    const adminExists = existingUser?.users?.some((user) => user.email === "admin@company.com")
+    // Check if admin already exists in staff_profiles
+    const { data: existingProfile } = await supabase
+      .from("staff_profiles")
+      .select("id")
+      .eq("email", "admin@company.com")
+      .single()
 
-    if (adminExists) {
-      return { error: "Admin user already exists. You can login with admin@company.com / admin" }
+    if (existingProfile) {
+      return {
+        success: "✅ Admin user already exists! You can login with:\n📧 Email: admin@company.com\n🔑 Password: admin",
+      }
     }
 
     // Create admin user using Supabase Admin API
@@ -195,7 +196,7 @@ export async function createDefaultAdmin() {
 
     if (error) {
       console.error("Admin creation error:", error)
-      return { error: error.message }
+      return { error: `Failed to create admin user: ${error.message}` }
     }
 
     if (data.user) {
@@ -214,13 +215,16 @@ export async function createDefaultAdmin() {
 
       if (profileError) {
         console.error("Admin profile creation error:", profileError)
-        return { error: "Admin user created but profile setup failed: " + profileError.message }
+        return { error: `Admin user created but profile setup failed: ${profileError.message}` }
       }
     }
 
-    return { success: "Default admin user created successfully! You can now login with admin@company.com / admin" }
+    return {
+      success:
+        "✅ Default admin user created successfully!\n\n📧 Email: admin@company.com\n🔑 Password: admin\n\nYou can now login!",
+    }
   } catch (error) {
     console.error("Admin creation error:", error)
-    return { error: "Failed to create default admin user. Make sure database tables are set up first." }
+    return { error: "❌ Failed to create default admin user. Please ensure database tables are set up first." }
   }
 }
